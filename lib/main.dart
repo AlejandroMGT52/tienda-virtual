@@ -8,11 +8,17 @@ import 'package:tienda_virtual_flutter/screens/auth/register_screen.dart'; // As
 import 'package:tienda_virtual_flutter/screens/promociones_screen.dart'; // Importa la pantalla de promociones
 import 'package:tienda_virtual_flutter/providers/cart_provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:firebase_core/firebase_core.dart';
+import 'package:tienda_virtual_flutter/firebase_options.dart'; // Asegúrate de que este archivo exista
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
   final prefs = await SharedPreferences.getInstance();
   final isLoggedIn = prefs.getBool('isLoggedIn') ?? false;
+
+  await Firebase.initializeApp(
+    options: DefaultFirebaseOptions.currentPlatform,
+  );
 
   runApp(
     MultiProvider(

@@ -15,6 +15,7 @@ dependencies:
   printing: ^5.11.1
   provider: ^6.0.0
   shared_preferences: ^2.0.0
+  firebase_core: ^2.27.1
   collection: ^1.19.1
   animate_do: ^3.0.2
   another_flushbar: ^1.12.30 # Versión sugerida de another_flushbar
