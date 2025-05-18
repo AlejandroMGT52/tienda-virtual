@@ -1,10 +1,9 @@
-// lib/app.dart
 import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
 import 'package:tienda_virtual_flutter/screens/home_screen.dart';
 import 'package:tienda_virtual_flutter/screens/shop_screen.dart';
 import 'package:tienda_virtual_flutter/screens/cart_screen.dart';
 import 'package:tienda_virtual_flutter/components/navbar.dart';
-import 'package:provider/provider.dart';
 import 'package:tienda_virtual_flutter/providers/cart_provider.dart';
 
 class App extends StatelessWidget {
@@ -20,14 +19,19 @@ class App extends StatelessWidget {
           primaryColor: const Color(0xFF3DB54A),
           colorScheme: ColorScheme.fromSwatch().copyWith(secondary: const Color(0xFFF9A826)),
           textTheme: const TextTheme(
-            bodyLarge: TextStyle(color: Color(0xFF333333)), // Corrección: bodyLarge
+            bodyLarge: TextStyle(color: const Color(0xFF333333)), // Corrección: bodyLarge
           ),
           fontFamily: 'Segoe UI',
         ),
-        home: const MainScreen(), // Usa MainScreen para la navegación
+        //  home: const MainScreen(), // No uses home y routes juntos.  Decide uno.
+        initialRoute:
+            '/', // Define una ruta inicial.  Generalmente es '/'.  Si usas routes, initialRoute es MEJOR.
         routes: {
+          '/': (context) =>
+              const MainScreen(), // La barra diagonal sola, es la principal
           '/home': (context) => const HomeScreen(),
-          '/shop': (context) => const ShopScreen(),
+          '/shop': (context) =>
+              const ShopScreen(category: 'Todos'), //  Aquí está la corrección IMPORTANTE
           '/cart': (context) => const CartScreen(),
         },
       ),
@@ -46,7 +50,9 @@ class _MainScreenState extends State<MainScreen> {
   int _selectedIndex = 0;
   final List<Widget> _widgetOptions = <Widget>[
     const HomeScreen(),
-    const ShopScreen(),
+    const ShopScreen(
+        category:
+            'Todos'), //  Corrección:  ShopScreen SIEMPRE necesita category
     const CartScreen(),
   ];
 

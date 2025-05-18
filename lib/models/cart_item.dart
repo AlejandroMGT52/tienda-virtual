@@ -1,5 +1,3 @@
-// lib/models/cart_item.dart
-
 import 'package:tienda_virtual_flutter/models/product.dart';
 
 class CartItem {
@@ -13,14 +11,14 @@ class CartItem {
 
   factory CartItem.fromMap(Map<String, dynamic> map) {
     return CartItem(
-      product: Product.fromMap(map['product'] as Map<String, dynamic>),
+      product: Product.fromMap(map['product'] as Map<String, dynamic>, map['productId']), // Pass productId
       quantity: map['quantity'] as int,
     );
   }
 
   Map<String, dynamic> toJson() {
     return {
-      'product': product.toJson(),
+      'product': product.toMap(), // Use toMap instead of toJson
       'quantity': quantity,
     };
   }

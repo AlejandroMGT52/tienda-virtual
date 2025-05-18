@@ -3,23 +3,12 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:tienda_virtual_flutter/utils/app_styles.dart';
 import 'package:tienda_virtual_flutter/screens/shop_screen.dart';
 import 'package:tienda_virtual_flutter/components/navbar.dart';
-import 'package:animate_do/animate_do.dart'; // Importa la librería animate_do
-
-class Category {
-  final int id;
-  final String name;
-  final String description;
-  final String image;
-  final IconData icon;
-
-  Category({
-    required this.id,
-    required this.name,
-    required this.description,
-    required this.image,
-    this.icon = Icons.category_outlined,
-  });
-}
+import 'package:animate_do/animate_do.dart';
+import 'package:provider/provider.dart';
+import 'package:tienda_virtual_flutter/providers/data_provider.dart';
+import 'package:tienda_virtual_flutter/models/product.dart';
+import 'package:tienda_virtual_flutter/models/promotion.dart';
+import 'package:cloud_firestore/cloud_firestore.dart'; // Importa Cloud Firestore para las categorías
 
 class Benefit {
   final IconData icon;
@@ -45,6 +34,21 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
   late AnimationController _animationController;
   late Animation<Offset> _titleAnimation;
   late Animation<Offset> _descriptionAnimation;
+
+  final List<Benefit> _benefits = [
+    Benefit(icon: Icons.local_shipping_outlined, title: 'Envío Rápido', description: 'Entrega en 24-48 horas en ciudades principales.'),
+    Benefit(icon: Icons.verified_outlined, title: 'Calidad Garantizada', description: 'Productos frescos y de la mejor calidad.'),
+    Benefit(icon: Icons.support_agent_outlined, title: 'Soporte 24/7', description: 'Atención al cliente disponible en todo momento.'),
+    Benefit(icon: Icons.thumb_up_alt_outlined, title: 'Excelentes Precios', description: 'Los mejores precios del mercado.'),
+  ];
+
+  // Lista de URLs de las imágenes destacadas
+  final List<String> _featuredImageUrls = [
+    'https://pbs.twimg.com/media/ECHwtNcUYAEB8qX.jpg:large',
+    'https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcQVLA5kKqR9NavabfMlykQb2-Lb6X4Uf0P8dA&s',
+    'https://delicatezza.ec/cdn/shop/files/0Y7A4714-Canasta-Frutas.jpg?v=1708450046',
+    'https://www.festiregalos.com.mx/cdn/shop/files/513e776f-e708-45b2-acad-484dbe4a4b8c.jpg?v=1725159774',
+  ];
 
   @override
   void initState() {
@@ -87,17 +91,12 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
     super.dispose();
   }
 
-  // Función para cerrar sesión
   Future<void> _logout(BuildContext context) async {
     final prefs = await SharedPreferences.getInstance();
-    // Limpiar el estado de inicio de sesión
     await prefs.setBool('isLoggedIn', false);
-    // Opcional: Limpiar otra información del usuario si es necesario
-    await prefs.remove('userEmail'); 
-
-    // Navegar a la pantalla de inicio de sesión
+    await prefs.remove('userEmail');
     if (mounted) {
-      Navigator.pushReplacementNamed(context, '/login'); // Asegúrate de tener la ruta '/login' definida
+      Navigator.pushReplacementNamed(context, '/login');
     }
   }
 
@@ -105,6 +104,18 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
   Widget build(BuildContext context) {
     final screenWidth = MediaQuery.of(context).size.width;
     final isMobile = screenWidth < 600;
+    final dataProvider = Provider.of<DataProvider>(context);
+
+    if (dataProvider.isLoading) {
+      return const Scaffold(body: Center(child: CircularProgressIndicator()));
+    }
+
+    if (dataProvider.error != null) {
+      return Scaffold(body: Center(child: Text('Error: ${dataProvider.error}')));
+    }
+
+    final List<Product> featuredProducts = dataProvider.products.where((p) => p.discount != null && p.discount! > 0).toList(); // Ejemplo: destacados con descuento
+    final List<Promotion> promotions = dataProvider.promotions;
 
     return Scaffold(
       appBar: const NavBar(),
@@ -136,30 +147,85 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
               ),
             ),
             const Divider(indent: 16.0, endIndent: 16.0),
-            ..._categories.map((category) => ListTile(
-                  leading: ElasticIn(
-                    child: Icon(category.icon, color: AppStyles.secondaryColor),
-                  ),
-                  title: Text(
-                    category.name,
-                    style: TextStyle(
-                      fontSize: isMobile ? 14 : 16,
-                      color: AppStyles.textColor,
-                    ),
-                  ),
-                  onTap: () {
-                    Navigator.pop(context);
-                    print('Navegar a la categoría: ${category.name}');
-                  },
-                  hoverColor: Colors.grey[100],
-                )),
+            ListTile(
+              leading: const Icon(Icons.food_bank_outlined, color: AppStyles.secondaryColor), // Icono para Lácteos
+              title: Text(
+                'Lácteos',
+                style: TextStyle(
+                  fontSize: isMobile ? 14 : 16,
+                  color: AppStyles.textColor,
+                ),
+              ),
+              onTap: () {
+                Navigator.pop(context);
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(builder: (context) => const ShopScreen(category: 'Lácteos')),
+                );
+              },
+              hoverColor: Colors.grey[100],
+            ),
+            ListTile(
+              leading: const Icon(Icons.restaurant_menu, color: AppStyles.secondaryColor), // Icono para Pastas
+              title: Text(
+                'Pastas',
+                style: TextStyle(
+                  fontSize: isMobile ? 14 : 16,
+                  color: AppStyles.textColor,
+                ),
+              ),
+              onTap: () {
+                Navigator.pop(context);
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(builder: (context) => const ShopScreen(category: 'Pastas')),
+                );
+              },
+              hoverColor: Colors.grey[100],
+            ),
+            ListTile(
+              leading: const Icon(Icons.bakery_dining, color: AppStyles.secondaryColor), // Icono para Panadería
+              title: Text(
+                'Panadería',
+                style: TextStyle(
+                  fontSize: isMobile ? 14 : 16,
+                  color: AppStyles.textColor,
+                ),
+              ),
+              onTap: () {
+                Navigator.pop(context);
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(builder: (context) => const ShopScreen(category: 'Panadería')),
+                );
+              },
+              hoverColor: Colors.grey[100],
+            ),
+            ListTile(
+              leading: const Icon(Icons.local_grocery_store, color: AppStyles.secondaryColor), // Icono para Frutas
+              title: Text(
+                'Frutas',
+                style: TextStyle(
+                  fontSize: isMobile ? 14 : 16,
+                  color: AppStyles.textColor,
+                ),
+              ),
+              onTap: () {
+                Navigator.pop(context);
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(builder: (context) => const ShopScreen(category: 'Frutas')),
+                );
+              },
+              hoverColor: Colors.grey[100],
+            ),
             const SizedBox(height: 16),
             const Divider(indent: 16.0, endIndent: 16.0),
             Padding(
               padding: const EdgeInsets.all(16.0),
               child: OutlinedButton.icon(
                 onPressed: () {
-                  _logout(context); // Llama a la función _logout
+                  _logout(context);
                 },
                 icon: const Icon(Icons.logout, color: Colors.redAccent),
                 label: const Text(
@@ -183,7 +249,7 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
       ),
       body: SingleChildScrollView(
         child: Padding(
-          padding: EdgeInsets.all(isMobile ? 12.0 : 16.0), // Ajuste de padding para móvil
+          padding: EdgeInsets.all(isMobile ? 12.0 : 16.0),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.center,
             children: [
@@ -232,7 +298,7 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
                   onPressed: () {
                     Navigator.push(
                       context,
-                      MaterialPageRoute(builder: (context) => const ShopScreen()),
+                      MaterialPageRoute(builder: (context) => const ShopScreen(category: '',)),
                     );
                   },
                   icon: const Icon(Icons.shopping_cart_outlined, color: Colors.white),
@@ -289,9 +355,9 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
                     ),
                   ),
                 ),
-              const SizedBox(height: 32),
+              const SizedBox(height: 16),
               Text(
-                'Nuestras Categorías Destacadas',
+                'Nuestros Productos Destacados',
                 style: TextStyle(
                   fontSize: isMobile ? 20 : 24,
                   fontWeight: FontWeight.bold,
@@ -302,19 +368,65 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
                 ),
               ),
               const SizedBox(height: 16),
+              if (dataProvider.isLoading)
+                const Center(child: CircularProgressIndicator())
+              else if (dataProvider.error != null)
+                Center(child: Text('Error al cargar productos: ${dataProvider.error}'))
+              else if (featuredProducts.isEmpty)
+                const Center(child: Text(''))
+              else
+                GridView.builder(
+                  shrinkWrap: true,
+                  physics: const NeverScrollableScrollPhysics(),
+                  gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+                    crossAxisCount: isMobile ? 2 : 4,
+                    crossAxisSpacing: isMobile ? 8 : 10,
+                    mainAxisSpacing: isMobile ? 8 : 10,
+                    childAspectRatio: isMobile ? 1 : 1.1,
+                  ),
+                  itemCount: featuredProducts.length,
+                  itemBuilder: (context, index) {
+                    final product = featuredProducts[index];
+                    final discountedPrice = dataProvider.applyDiscount(product);
+                    final hasDiscount = discountedPrice < product.price;
+                    return _buildProductCard(product, context, isMobile, discountedPrice, hasDiscount);
+                  },
+                ),
+              const SizedBox(height: 16),
+              // Nueva sección de imágenes destacadas con GridView
+              Text(
+                '',
+                style: TextStyle(
+                  fontSize: isMobile ? 20 : 24,
+                  fontWeight: FontWeight.bold,
+                  color: AppStyles.textColor,
+                  decoration: TextDecoration.underline,
+                  decorationColor: AppStyles.secondaryColor,
+                  decorationThickness: 1.5,
+                ),
+              ),
+              const SizedBox(height: 16),
               GridView.builder(
                 shrinkWrap: true,
                 physics: const NeverScrollableScrollPhysics(),
                 gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
-                  crossAxisCount: isMobile ? 2 : 4,
-                  crossAxisSpacing: isMobile ? 8 : 10,
-                  mainAxisSpacing: isMobile ? 8 : 10,
-                  childAspectRatio: isMobile ? 1 : 1.1,
+                  crossAxisCount: 4, // Mostramos 4 imágenes por fila
+                  crossAxisSpacing: 10,
+                  mainAxisSpacing: 10,
+                  childAspectRatio: 1, // Para que las imágenes sean cuadradas (aproximadamente)
                 ),
-                itemCount: _categories.length,
+                itemCount: _featuredImageUrls.length,
                 itemBuilder: (context, index) {
-                  final category = _categories[index];
-                  return _buildCategoryCard(category, context, isMobile);
+                  return ClipRRect(
+                    borderRadius: BorderRadius.circular(8),
+                    child: Image.network(
+                      _featuredImageUrls[index],
+                      fit: BoxFit.cover,
+                      errorBuilder: (context, error, stackTrace) {
+                        return const Center(child: Icon(Icons.image_not_supported, color: Colors.grey));
+                      },
+                    ),
+                  );
                 },
               ),
               const SizedBox(height: 32),
@@ -334,45 +446,97 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
                 shrinkWrap: true,
                 physics: const NeverScrollableScrollPhysics(),
                 gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
-                  crossAxisCount: isMobile ? 2 : 4,
-                  crossAxisSpacing: isMobile ? 10 : 12,
-                  mainAxisSpacing: isMobile ? 10 : 12,
-                  childAspectRatio: isMobile ? 1.3 : 1.5,
+                  crossAxisCount: isMobile ?
+                  2 : 2,
+                  crossAxisSpacing: 16,
+                  mainAxisSpacing: 16,
+                  childAspectRatio: isMobile ? 2 : 3,
                 ),
                 itemCount: _benefits.length,
                 itemBuilder: (context, index) {
                   final benefit = _benefits[index];
-                  return _buildBenefitCard(benefit, isMobile);
+                  return FadeInUp(
+                    delay: Duration(milliseconds: 200 * index),
+                    child: Card(
+                      elevation: 4,
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                      child: Padding(
+                        padding: const EdgeInsets.all(12.0),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.center,
+                          children: [
+                            Icon(benefit.icon, size: 32, color: AppStyles.secondaryColor),
+                            const SizedBox(height: 8),
+                            Text(
+                              benefit.title,
+                              style: TextStyle(
+                                fontWeight: FontWeight.bold,
+                                fontSize: isMobile ? 14 : 16,
+                                color: AppStyles.textColor,
+                              ),
+                              textAlign: TextAlign.center,
+                            ),
+                            const SizedBox(height: 4),
+                            Text(
+                              benefit.description,
+                              style: TextStyle(
+                                fontSize: isMobile ? 12 : 14,
+                                color: Colors.grey.shade600,
+                              ),
+                              textAlign: TextAlign.center,
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                  );
                 },
               ),
               const SizedBox(height: 32),
-              BounceInUp(
-                child: OutlinedButton.icon(
-                  onPressed: () {
-                    Navigator.push(
-                      context,
-                      MaterialPageRoute(builder: (context) => const ShopScreen()),
-                    );
-                  },
-                  icon: const Icon(Icons.visibility_outlined, color: AppStyles.secondaryColor),
-                  label: Text(
-                    'Ver Toda Nuestra Selección',
-                    style: TextStyle(
-                      color: AppStyles.secondaryColor,
-                      fontSize: isMobile ? 16 : 18,
-                      fontWeight: FontWeight.w600,
-                    ),
-                  ),
-                  style: OutlinedButton.styleFrom(
-                    padding: EdgeInsets.symmetric(horizontal: isMobile ? 25 : 35, vertical: 12),
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(10),
-                    ),
-                    side: const BorderSide(color: AppStyles.secondaryColor, width: 1.5),
-                  ),
+              const Text(
+                '¡Síguenos en nuestras redes sociales!',
+                style: TextStyle(
+                  fontSize: 18,
+                  color: Colors.grey,
+                  fontStyle: FontStyle.italic,
                 ),
+                textAlign: TextAlign.center,
+              ),
+              const SizedBox(height: 16),
+              Row(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  IconButton(
+                    icon: const Icon(Icons.facebook, color: Colors.blue, size: 30),
+                    onPressed: () {
+                      // TODO: Implementar funcionalidad para abrir Facebook
+                    },
+                  ),
+                  const SizedBox(width: 16),
+                  IconButton(
+                    icon: const Icon(Icons.camera_alt_outlined, color: Colors.purple, size: 30),
+                    onPressed: () {
+                      // TODO: Implementar funcionalidad para abrir Instagram
+                    },
+                  ),
+                  const SizedBox(width: 16),
+                  IconButton(
+                    icon: const Icon(Icons.mail_outline, color: Colors.redAccent, size: 30),
+                    onPressed: () {
+                      // TODO: Implementar funcionalidad para abrir correo electrónico
+                    },
+                  ),
+                ],
               ),
               const SizedBox(height: 40),
+              Text(
+                '© 2023 FreshMarket - Todos los derechos reservados.',
+                style: TextStyle(
+                  fontSize: 12,
+                  color: Colors.grey.shade500,
+                ),
+                textAlign: TextAlign.center,
+              ),
             ],
           ),
         ),
@@ -380,222 +544,92 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
     );
   }
 
-  Widget _buildCategoryCard(Category category, BuildContext context, bool isMobile) {
-    return InkWell(
-      onTap: () {
-        Navigator.push(
-          context,
-          MaterialPageRoute(builder: (context) => const ShopScreen()),
-        );
-      },
-      borderRadius: BorderRadius.circular(10),
-      child: Container(
-        decoration: BoxDecoration(
-          color: Colors.white,
-          borderRadius: BorderRadius.circular(10),
-          boxShadow: const [
-            BoxShadow(
-              color: Colors.black12,
-              blurRadius: 4,
-              offset: Offset(0, 2),
-            ),
-          ],
-        ),
+  Widget _buildProductCard(Product product, BuildContext context, bool isMobile, double discountedPrice, bool hasDiscount) {
+    return Card(
+      elevation: 4,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+      clipBehavior: Clip.antiAlias,
+      child: InkWell(
+        onTap: () {
+          // TODO: Implementar navegación a la página de detalles del producto
+        },
         child: Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
+          crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Expanded(
-              flex: 2,
-              child: ClipRRect(
-                borderRadius: const BorderRadius.vertical(top: Radius.circular(10)),
-                child: Image.network(
-                  category.image,
-                  fit: BoxFit.cover,
-                  errorBuilder: (context, error, stackTrace) {
-                    return const Center(child: Icon(Icons.image_not_supported, size: 24, color: Colors.grey));
-                  },
-                ),
+              child: Stack(
+                fit: StackFit.expand,
+                children: [
+                  Image.network(
+                    product.image,
+                    fit: BoxFit.cover,
+                    errorBuilder: (context, error, stackTrace) {
+                      return const Center(child: Icon(Icons.image_not_supported));
+                    },
+                  ),
+                  if (hasDiscount)
+                    Positioned(
+                      top: 8,
+                      left: 8,
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                        decoration: BoxDecoration(
+                          color: Colors.redAccent,
+                          borderRadius: BorderRadius.circular(8),
+                        ),
+                        child: Text(
+                          '-${product.discount}%',
+                          style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 12),
+                        ),
+                      ),
+                    ),
+                ],
               ),
             ),
             Padding(
               padding: const EdgeInsets.all(8.0),
-              child: Text(
-                category.name,
-                style: TextStyle(
-                  fontWeight: FontWeight.bold,
-                  fontSize: isMobile ? 12 : 14,
-                  color: AppStyles.textColor,
-                ),
-                textAlign: TextAlign.center,
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    product.name,
+                    style: TextStyle(
+                      fontWeight: FontWeight.bold,
+                      fontSize: isMobile ? 14 : 16,
+                      color: AppStyles.textColor,
+                    ),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                  const SizedBox(height: 4),
+                  Row(
+                    children: [
+                      if (hasDiscount)
+                        Text(
+                          '\$${product.price.toStringAsFixed(2)}',
+                          style: TextStyle(
+                            decoration: TextDecoration.lineThrough,
+                            color: Colors.grey.shade600,
+                            fontSize: isMobile ? 12 : 14,
+                          ),
+                        ),
+                      const SizedBox(width: 4),
+                      Text(
+                        '\$${discountedPrice.toStringAsFixed(2)}',
+                        style: TextStyle(
+                          fontWeight: FontWeight.bold,
+                          color: AppStyles.secondaryColor,
+                          fontSize: isMobile ? 14 : 16,
+                        ),
+                      ),
+                    ],
+                  ),
+                ],
               ),
             ),
-            if (category.description.isNotEmpty)
-              Padding(
-                padding: const EdgeInsets.only(left: 8.0, right: 8.0, bottom: 8.0),
-                child: Text(
-                  category.description,
-                  style: TextStyle(
-                    fontSize: isMobile ? 10 : 12,
-                    color: Colors.grey,
-                  ),
-                  textAlign: TextAlign.center,
-                ),
-              ),
           ],
         ),
       ),
-    );
-  }
-
-  Widget _buildBenefitCard(Benefit benefit, bool isMobile) {
-    return Container(
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(10),
-        boxShadow: const [
-          BoxShadow(
-            color: Colors.black12,
-            blurRadius: 4,
-            offset: Offset(0, 2),
-          ),
-        ],
-      ),
-      padding: const EdgeInsets.all(12),
-      child: Column(
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          Icon(benefit.icon, size: isMobile ? 36 : 48, color: AppStyles.secondaryColor),
-          const SizedBox(height: 8),
-          Text(
-            benefit.title,
-            style: TextStyle(
-              fontWeight: FontWeight.bold,
-              fontSize: isMobile ? 12 : 14,
-              color: AppStyles.textColor,
-            ),
-            textAlign: TextAlign.center,
-          ),
-          const SizedBox(height: 6),
-          Text(
-            benefit.description,
-            style: TextStyle(
-              color: Colors.grey.shade600,
-              fontSize: isMobile ? 10 : 12,
-              height: 1.3,
-            ),
-            textAlign: TextAlign.center,
-          ),
-        ],
-      ),
-    );
-  }
-
-  final List<Category> _categories = [
-    Category(
-        id: 1,
-        name: 'Frutas Frescas',
-        description: 'Lo mejor de la temporada.',
-        image:
-            'https://www.telemundo.com/sites/nbcutelemundo/files/images/promo/article/2017/04/13/naranja-manzana-y-otras-frutas-frescas.jpg',
-        icon: Icons.local_grocery_store_outlined),
-    Category(
-        id: 2,
-        name: 'Verduras Orgánicas',
-        description: 'Directo del campo a tu mesa.',
-        image: 'https://strapi.fitia.app/uploads/verduras_402de1696c.jpg',
-        icon: Icons.eco_outlined),
-    Category(
-        id: 3,
-        name: 'Panadería Artesanal',
-        description: 'Horneado con amor cada día.',
-        image:
-            'https://tb-static.uber.com/prod/image-proc/processed_images/8f27b5720353d0b843e26cd8ad9ba262/fb86662148be855d931b37d6c1e5fcbe.jpeg',
-        icon: Icons.bakery_dining_outlined),
-    Category(
-        id: 4,
-        name: 'Lácteos Selectos',
-        description: 'Frescura y calidad garantizada.',
-        image: 'https://p2.trrsf.com/image/fget/cf/1200/630/middle/images.terra.com/2022/12/08/1814654892-laticinios-1.jpg',
-        icon: Icons.local_drink_outlined),
-    // Agrega más categorías aquí con sus respectivos iconos
-  ];
-
-  final List<Benefit> _benefits = [
-    Benefit(
-      icon: Icons.local_shipping_rounded,
-      title: 'Envío Rápido',
-      description: 'Recibe tus compras rápidamente y con seguridad.',
-    ),
-    Benefit(
-      icon: Icons.check_circle_outline_rounded,
-      title: 'Calidad Premium',
-      description: 'Productos frescos y de la más alta calidad para ti y tu familia.',
-    ),
-    Benefit(
-      icon: Icons.monetization_on_outlined,
-      title: 'Precios Justos',
-      description: 'Disfruta de excelentes precios sin sacrificar la calidad de nuestros productos.',
-    ),
-    Benefit(
-      icon: Icons.support_agent_rounded,
-      title: 'Soporte Amigable',
-      description: 'Nuestro equipo está listo para ayudarte con cualquier duda o consulta.',
-    ),
-  ];
-}
-
-// Widget para la animación Fade In
-class FadeIn extends StatefulWidget {
-  final Widget child;
-  final Duration duration;
-  final Duration? delay;
-
-  const FadeIn({
-    Key? key,
-    required this.child,
-    this.duration = const Duration(milliseconds: 500),
-    this.delay,
-  }) : super(key: key);
-
-  @override
-  _FadeInState createState() => _FadeInState();
-}
-
-class _FadeInState extends State<FadeIn> with SingleTickerProviderStateMixin {
-  late AnimationController _controller;
-  late Animation<double> _animation;
-
-  @override
-  void initState() {
-    super.initState();
-    _controller = AnimationController(
-      vsync: this,
-      duration: widget.duration,
-    );
-    _animation = Tween<double>(begin: 0.0, end: 1.0).animate(
-      CurvedAnimation(parent: _controller, curve: Curves.easeOut),
-    );
-
-    if (widget.delay == null) {
-      _controller.forward();
-    } else {
-      Future.delayed(widget.delay!, () {
-        _controller.forward();
-      });
-    }
-  }
-
-  @override
-  void dispose() {
-    _controller.dispose();
-    super.dispose();
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return FadeTransition(
-      opacity: _animation,
-      child: widget.child,
     );
   }
 }

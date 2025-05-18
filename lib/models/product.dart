@@ -1,45 +1,73 @@
-// lib/models/product.dart
+import 'package:cloud_firestore/cloud_firestore.dart';
 
 class Product {
-  int id;
-  String title;
-  double price;
-  String description;
-  String category;
-  String image;
-  int? discount;
+  final String id;
+  final String name;
+  final String description;
+  final String image;
+  final double price;
+  final String title;
+  final String category;
+  final int? discount; // Make discount nullable
 
   Product({
     required this.id,
-    required this.title,
-    required this.price,
+    required this.name,
     required this.description,
-    required this.category,
     required this.image,
-    this.discount,
+    required this.price,
+    required this.title,
+    required this.category,
+    this.discount, // Make discount optional
   });
 
-  factory Product.fromMap(Map<String, dynamic> map) {
+  // Factory constructor to create a Product from a Firestore document.
+  factory Product.fromMap(Map<String, dynamic> data, String documentId) {
     return Product(
-      id: map['id'] as int,
-      title: map['title'] as String,
-      price: map['price'] as double,
-      description: map['description'] as String,
-      category: map['category'] as String,
-      image: map['image'] as String,
-      discount: map['discount'] as int?,
+      id: documentId,
+      name: data['name'] ?? '',
+      description: data['description'] ?? '',
+      image: data['image'] ?? '',
+      price: (data['price'] ?? 0.0).toDouble(),
+      title: data['title'] ?? '',
+      category: data['category'] ?? '',
+      discount: data['discount'] as int?, // Read discount as int?
     );
   }
 
-  Map<String, dynamic> toJson() {
+  // Method to convert a Product object to a Map for Firestore.
+  Map<String, dynamic> toMap() {
     return {
-      'id': id,
-      'title': title,
-      'price': price,
+      'name': name,
       'description': description,
-      'category': category,
       'image': image,
-      'discount': discount,
+      'price': price,
+      'title': title,
+      'category': category,
+      'discount': discount, // Include discount in the map
     };
+  }
+
+  // Add the copyWith method here:
+  Product copyWith({
+    String? id,
+    String? name,
+    String? description,
+    String? image,
+    double? price,
+    String? title,
+    String? category,
+    int? discount,
+  }) {
+    return Product(
+      id: id ?? this.id,
+      name: name ?? this.name,
+      description: description ?? this.description,
+      image: image ?? this.image,
+      price: price ?? this.price,
+      title: title ?? this.title,
+      category: category ?? this.category,
+      discount: discount ?? this.discount,
+    );
   }
 }

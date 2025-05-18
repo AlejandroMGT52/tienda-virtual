@@ -8,49 +8,143 @@ import 'package:pdf/pdf.dart';
 import 'package:printing/printing.dart';
 import 'dart:typed_data';
 import 'package:flutter/services.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 class CartScreen extends StatelessWidget {
   const CartScreen({Key? key}) : super(key: key);
 
-  @override
-  Widget build(BuildContext context) {
-    final cartProvider = Provider.of<CartProvider>(context);
-    final cartItems = cartProvider.cartItems;
+  Future<Uint8List?> _generateOrderPdf(
+    BuildContext context,
+    List<CartItem> cartItems,
+    double total,
+    String userName,
+    String userEmail,
+  ) async {
+    final pdf = pw.Document();
 
-    return Scaffold(
-      appBar: AppBar(
-        title: const Text('Tu Carrito',
-            style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
-        backgroundColor: AppStyles.primaryColor,
-        iconTheme: const IconThemeData(color: Colors.white),
-        elevation: 2,
-      ),
-      body: cartItems.isEmpty
-          ? const Center(
-              child: Text('Tu carrito está vacío',
-                  style: TextStyle(fontSize: 18, color: Colors.grey)),
-            )
-          : Padding(
-              padding: const EdgeInsets.all(16.0),
-              child: Column(
-                children: [
-                  Expanded(
-                    child: ListView.builder(
-                      itemCount: cartItems.length,
-                      itemBuilder: (context, index) {
-                        final item = cartItems.elementAt(index);
-                        return _buildCartItem(item, cartProvider);
-                      },
-                    ),
-                  ),
-                  const SizedBox(height: 20),
-                  _buildCartTotal(cartProvider),
-                  const SizedBox(height: 30),
-                  _buildCartButtons(context, cartProvider),
-                ],
+    Uint8List? logoBytes;
+    try {
+      final data = await rootBundle.load('assets/images/logo-nuevo.png');
+      logoBytes = data.buffer.asUint8List();
+    } catch (e) {
+      logoBytes = null;
+    }
+
+    pdf.addPage(pw.Page(
+      pageFormat: PdfPageFormat.a4,
+      margin: const pw.EdgeInsets.all(30),
+      build: (context) {
+        return pw.Column(
+          crossAxisAlignment: pw.CrossAxisAlignment.start,
+          children: [
+            if (logoBytes != null)
+              pw.Align(
+                alignment: pw.Alignment.centerLeft,
+                child: pw.Image(pw.MemoryImage(logoBytes), width: 120),
               ),
+            pw.SizedBox(height: 16),
+            pw.Text('Factura de Compra',
+                style: pw.TextStyle(
+                    fontSize: 22, fontWeight: pw.FontWeight.bold)),
+            pw.Text('Fecha: ${DateTime.now().toString().split(' ')[0]}'),
+            pw.Divider(),
+            pw.SizedBox(height: 10),
+            pw.Table.fromTextArray(
+              headers: ['Producto', 'Cantidad', 'Precio Unit.', 'Total'],
+              data: cartItems
+                  .map((item) => [
+                        item.product.title,
+                        item.quantity.toString(),
+                        '\$${item.product.price.toStringAsFixed(2)}',
+                        '\$${(item.quantity * item.product.price).toStringAsFixed(2)}'
+                      ])
+                  .toList(),
+              headerStyle: pw.TextStyle(
+                  fontWeight: pw.FontWeight.bold, color: PdfColors.white),
+              headerDecoration:
+                  const pw.BoxDecoration(color: PdfColors.blueGrey800),
+              cellStyle: const pw.TextStyle(fontSize: 10),
+              border: pw.TableBorder.all(color: PdfColors.grey300),
             ),
-    );
+            pw.SizedBox(height: 20),
+            pw.Row(
+                mainAxisAlignment: pw.MainAxisAlignment.end,
+                children: [
+                  pw.Text('Subtotal: ',
+                      style: pw.TextStyle(fontWeight: pw.FontWeight.bold)),
+                  pw.Text(
+                      '\$${(total / 1.16).toStringAsFixed(2)}',
+                      style: const pw.TextStyle(fontSize: 12))
+                ]),
+            pw.Row(
+                mainAxisAlignment: pw.MainAxisAlignment.end,
+                children: [
+                  pw.Text('IVA (16%): ',
+                      style: pw.TextStyle(fontWeight: pw.FontWeight.bold)),
+                  pw.Text('\$${(total * 0.16 / 1.16).toStringAsFixed(2)}',
+                      style: const pw.TextStyle(fontSize: 12))
+                ]),
+            pw.Divider(),
+            pw.Row(
+                mainAxisAlignment: pw.MainAxisAlignment.end,
+                children: [
+                  pw.Text('Total a Pagar: ',
+                      style: pw.TextStyle(
+                          fontWeight: pw.FontWeight.bold, fontSize: 16)),
+                  pw.Text('\$${total.toStringAsFixed(2)}',
+                      style: pw.TextStyle(
+                          fontWeight: pw.FontWeight.bold, fontSize: 16))
+                ]),
+            pw.SizedBox(height: 30),
+            pw.Text('Gracias por tu compra!',
+                style: const pw.TextStyle(fontSize: 12)),
+          ],
+        );
+      },
+    ));
+
+    return await pdf.save();
+  }
+
+  Future<void> _saveOrderDataToFirestore(
+    BuildContext context,
+    List<CartItem> cartItems,
+    double total,
+    String userId,
+    String userName,
+    String userEmail,
+  ) async {
+    try {
+      await FirebaseFirestore.instance.collection('orders').add({
+        'fecha': DateTime.now(),
+        'productos': cartItems.map((item) {
+          return {
+            'productoId': item.product.id,
+            'titulo': item.product.title,
+            'cantidad': item.quantity,
+            'precioUnitario': item.product.price,
+            'totalProducto': item.quantity * item.product.price,
+          };
+        }).toList(),
+        'total': total,
+        'clienteId': userId,
+        'nombreCliente': userName,
+        'emailCliente': userEmail,
+        'facturaGenerada': true, // Indicador de que se generó una factura
+        // No guardamos pdfBytes aquí
+      });
+      print('Datos del pedido guardados en Firestore con éxito');
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Pedido guardado correctamente')),
+      );
+      Provider.of<CartProvider>(context, listen: false).clearCart();
+    } catch (e) {
+      print('Error al guardar los datos del pedido en Firestore: $e');
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Error al guardar el pedido: ${e.toString()}')),
+      );
+    }
   }
 
   Widget _buildCartItem(CartItem item, CartProvider cartProvider) {
@@ -223,14 +317,24 @@ class CartScreen extends StatelessWidget {
               shape: RoundedRectangleBorder(
                   borderRadius: BorderRadius.circular(12)),
             ),
-            child:
-                const Text('Vaciar Carrito', style: TextStyle(fontSize: 17)),
+            child: const Text('Vaciar Carrito', style: TextStyle(fontSize: 17)),
           ),
         ),
         const SizedBox(width: 16),
         Expanded(
           child: ElevatedButton(
             onPressed: () async {
+              final SharedPreferences prefs = await SharedPreferences.getInstance();
+              final String? userName = prefs.getString('userName');
+              final String? userEmail = prefs.getString('userEmail');
+
+              if (userName == null || userEmail == null) {
+                ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+                    content: Text(
+                        'Por favor, inicie sesión para generar la factura.')));
+                return;
+              }
+
               final option = await showModalBottomSheet<String>(
                 context: context,
                 builder: (context) => Column(
@@ -251,15 +355,31 @@ class CartScreen extends StatelessWidget {
               );
 
               if (option != null) {
-                await _generateAndPrintPdf(
+                final pdfBytes = await _generateOrderPdf(
                   context,
                   cartProvider.cartItems,
                   cartProvider.getCartTotal(),
-                  print: option == 'print',
+                  userName!,
+                  userEmail!,
                 );
-                cartProvider.clearCart();
-                ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
-                    content: Text('Factura generada. Gracias por tu compra.')));
+
+                if (pdfBytes != null) {
+                  if (option == 'print') {
+                    await Printing.layoutPdf(onLayout: (_) async => pdfBytes);
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(content: Text('Factura lista para imprimir')),
+                    );
+                  } else if (option == 'download') {
+                    await Printing.sharePdf(bytes: pdfBytes, filename: 'factura.pdf');
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(content: Text('Factura descargada')),
+                    );
+                  }
+                } else {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(content: Text('Error al generar la factura')),
+                  );
+                }
               }
             },
             style: ElevatedButton.styleFrom(
@@ -272,105 +392,43 @@ class CartScreen extends StatelessWidget {
             child: const Text('Generar Factura', style: TextStyle(fontSize: 17)),
           ),
         ),
+        const SizedBox(width: 16),
+        Expanded(
+          child: ElevatedButton(
+            onPressed: () async {
+              final SharedPreferences prefs = await SharedPreferences.getInstance();
+              final String? userId = prefs.getString('userId');
+              final String? userName = prefs.getString('userName');
+              final String? userEmail = prefs.getString('userEmail');
+
+              if (userId == null || userName == null || userEmail == null) {
+                ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+                    content: Text(
+                        'Por favor, inicie sesión para guardar el pedido.')));
+                return;
+              }
+
+              await _saveOrderDataToFirestore(
+                context,
+                cartProvider.cartItems,
+                cartProvider.getCartTotal(),
+                userId!,
+                userName!,
+                userEmail!,
+              );
+            },
+            style: ElevatedButton.styleFrom(
+              backgroundColor: AppStyles.secondaryColor,
+              foregroundColor: Colors.white,
+              padding: const EdgeInsets.symmetric(vertical: 15),
+              shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(12)),
+            ),
+            child: const Text('Guardar Pedido', style: TextStyle(fontSize: 17)),
+          ),
+        ),
       ],
     );
-  }
-
-  Future<void> _generateAndPrintPdf(
-    BuildContext context,
-    List<CartItem> cartItems,
-    double total, {
-    required bool print,
-  }) async {
-    final pdf = pw.Document();
-
-    Uint8List? logoBytes;
-    try {
-      final data = await rootBundle.load('assets/images/logo-nuevo.png');
-      logoBytes = data.buffer.asUint8List();
-    } catch (e) {
-      logoBytes = null;
-    }
-
-    pdf.addPage(pw.Page(
-      pageFormat: PdfPageFormat.a4,
-      margin: const pw.EdgeInsets.all(30),
-      build: (context) {
-        return pw.Column(
-          crossAxisAlignment: pw.CrossAxisAlignment.start,
-          children: [
-            if (logoBytes != null)
-              pw.Align(
-                alignment: pw.Alignment.centerLeft,
-                child: pw.Image(pw.MemoryImage(logoBytes), width: 120),
-              ),
-            pw.SizedBox(height: 16),
-            pw.Text('Factura de Compra',
-                style: pw.TextStyle(
-                    fontSize: 22, fontWeight: pw.FontWeight.bold)),
-            pw.Text('Fecha: ${DateTime.now().toString().split(' ')[0]}'),
-            pw.Divider(),
-            pw.SizedBox(height: 10),
-            pw.Table.fromTextArray(
-              headers: ['Producto', 'Cantidad', 'Precio Unit.', 'Total'],
-              data: cartItems
-                  .map((item) => [
-                        item.product.title,
-                        item.quantity.toString(),
-                        '\$${item.product.price.toStringAsFixed(2)}',
-                        '\$${(item.quantity * item.product.price).toStringAsFixed(2)}'
-                      ])
-                  .toList(),
-              headerStyle: pw.TextStyle(
-                  fontWeight: pw.FontWeight.bold, color: PdfColors.white),
-              headerDecoration:
-                  const pw.BoxDecoration(color: PdfColors.blueGrey800),
-              cellStyle: const pw.TextStyle(fontSize: 10),
-              border: pw.TableBorder.all(color: PdfColors.grey300),
-            ),
-            pw.SizedBox(height: 20),
-            pw.Row(
-                mainAxisAlignment: pw.MainAxisAlignment.end,
-                children: [
-                  pw.Text('Subtotal: ',
-                      style: pw.TextStyle(fontWeight: pw.FontWeight.bold)),
-                  pw.Text(
-                      '\$${(total / 1.16).toStringAsFixed(2)}',
-                      style: const pw.TextStyle(fontSize: 12))
-                ]),
-            pw.Row(
-                mainAxisAlignment: pw.MainAxisAlignment.end,
-                children: [
-                  pw.Text('IVA (16%): ',
-                      style: pw.TextStyle(fontWeight: pw.FontWeight.bold)),
-                  pw.Text('\$${(total * 0.16 / 1.16).toStringAsFixed(2)}',
-                      style: const pw.TextStyle(fontSize: 12))
-                ]),
-            pw.Divider(),
-            pw.Row(
-                mainAxisAlignment: pw.MainAxisAlignment.end,
-                children: [
-                  pw.Text('Total a Pagar: ',
-                      style: pw.TextStyle(
-                          fontWeight: pw.FontWeight.bold, fontSize: 16)),
-                  pw.Text('\$${total.toStringAsFixed(2)}',
-                      style: pw.TextStyle(
-                          fontWeight: pw.FontWeight.bold, fontSize: 16))
-                ]),
-            pw.SizedBox(height: 30),
-            pw.Text('Gracias por tu compra!',
-                style: const pw.TextStyle(fontSize: 12)),
-          ],
-        );
-      },
-    ));
-
-    final pdfBytes = await pdf.save();
-    if (print) {
-      await Printing.layoutPdf(onLayout: (_) async => pdfBytes);
-    } else {
-      await Printing.sharePdf(bytes: pdfBytes, filename: 'factura.pdf');
-    }
   }
 
   Widget _buildConfirmationDialog(
@@ -388,12 +446,52 @@ class CartScreen extends StatelessWidget {
           style: ElevatedButton.styleFrom(
             backgroundColor: AppStyles.secondaryColor,
             foregroundColor: Colors.white,
-            shape:
-                RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
           ),
           child: const Text('Confirmar'),
         ),
       ],
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final cartProvider = Provider.of<CartProvider>(context);
+    final cartItems = cartProvider.cartItems;
+
+    return Scaffold(
+      appBar: AppBar(
+        title: const Text('Tu Carrito',
+            style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+        backgroundColor: AppStyles.primaryColor,
+        iconTheme: const IconThemeData(color: Colors.white),
+        elevation: 2,
+      ),
+      body: cartItems.isEmpty
+          ? const Center(
+              child: Text('Tu carrito está vacío',
+                  style: TextStyle(fontSize: 18, color: Colors.grey)),
+            )
+          : Padding(
+              padding: const EdgeInsets.all(16.0),
+              child: Column(
+                children: [
+                  Expanded(
+                    child: ListView.builder(
+                      itemCount: cartItems.length,
+                      itemBuilder: (context, index) {
+                        final item = cartItems.elementAt(index);
+                        return _buildCartItem(item, cartProvider);
+                      },
+                    ),
+                  ),
+                  const SizedBox(height: 20),
+                  _buildCartTotal(cartProvider),
+                  const SizedBox(height: 30),
+                  _buildCartButtons(context, cartProvider),
+                ],
+              ),
+            ),
     );
   }
 }

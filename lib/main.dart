@@ -3,13 +3,14 @@ import 'package:provider/provider.dart';
 import 'package:tienda_virtual_flutter/screens/home_screen.dart';
 import 'package:tienda_virtual_flutter/screens/shop_screen.dart';
 import 'package:tienda_virtual_flutter/screens/cart_screen.dart';
-import 'package:tienda_virtual_flutter/screens/login_screen.dart'; // Asegúrate de tener este archivo
-import 'package:tienda_virtual_flutter/screens/auth/register_screen.dart'; // Asegúrate de tener este archivo
-import 'package:tienda_virtual_flutter/screens/promociones_screen.dart'; // Importa la pantalla de promociones
+import 'package:tienda_virtual_flutter/screens/login_screen.dart';
+import 'package:tienda_virtual_flutter/screens/auth/register_screen.dart';
+import 'package:tienda_virtual_flutter/screens/promociones_screen.dart';
 import 'package:tienda_virtual_flutter/providers/cart_provider.dart';
+import 'package:tienda_virtual_flutter/providers/data_provider.dart'; // Importante: Importar DataProvider
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:firebase_core/firebase_core.dart';
-import 'package:tienda_virtual_flutter/firebase_options.dart'; // Asegúrate de que este archivo exista
+import 'package:tienda_virtual_flutter/firebase_options.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -24,7 +25,8 @@ void main() async {
     MultiProvider(
       providers: [
         ChangeNotifierProvider(create: (context) => CartProvider()),
-        // Puedes agregar otros Providers aquí si los tienes
+        ChangeNotifierProvider(create: (context) => DataProvider()), // Agregamos DataProvider aquí
+        // Aquí puedes agregar otros Providers si los tienes
       ],
       child: MyApp(initialRoute: isLoggedIn ? '/home' : '/login'),
     ),
@@ -40,6 +42,7 @@ class MyApp extends StatelessWidget {
   Widget build(BuildContext context) {
     return MaterialApp(
       title: 'FreshMarket',
+      debugShowCheckedModeBanner: false,
       theme: ThemeData(
         primaryColor: const Color(0xFF3DB54A),
         colorScheme:
@@ -52,14 +55,11 @@ class MyApp extends StatelessWidget {
       initialRoute: initialRoute,
       routes: {
         '/login': (context) => const LoginScreen(),
-        // Ruta para login
-        '/register': (context) =>
-            const RegisterScreen(), // Ruta para registro
+        '/register': (context) => const RegisterScreen(),
         '/home': (context) => const HomeScreen(),
-        '/shop': (context) => const ShopScreen(),
+        '/shop': (context) => const ShopScreen(category: 'Todos'), // Modificado para incluir la categoría
         '/cart': (context) => const CartScreen(),
-        '/promociones': (context) =>
-            const PromocionesScreen(), // Agrega la ruta para PromocionesScreen
+        '/promociones': (context) => const PromocionesScreen(),
       },
     );
   }

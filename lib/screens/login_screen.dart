@@ -1,7 +1,10 @@
 import 'package:flutter/material.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:shared_preferences/shared_preferences.dart';
-import 'package:tienda_virtual_flutter/utils/input_validators.dart'; // Importa los validadores
-import 'package:tienda_virtual_flutter/screens/home_screen.dart'; // Asegúrate de importar HomeScreen
+import 'package:tienda_virtual_flutter/utils/input_validators.dart';
+import 'package:crypto/crypto.dart';
+import 'dart:convert';
+import 'package:tienda_virtual_flutter/screens/auth/register_screen.dart';
 
 class LoginScreen extends StatefulWidget {
   const LoginScreen({super.key});
@@ -15,10 +18,9 @@ class _LoginScreenState extends State<LoginScreen> {
   final _emailController = TextEditingController();
   final _passwordController = TextEditingController();
   bool _obscurePassword = true;
-  bool _isLoading =
-      false; // Para mostrar un indicador de carga durante el inicio de sesión
-  String _errorMessage =
-      ''; // Para mostrar mensajes de error al usuario
+  bool _isLoading = false;
+  String _errorMessage = '';
+  final FirebaseFirestore _firestore = FirebaseFirestore.instance;
 
   void _togglePasswordVisibility() {
     setState(() {
@@ -26,51 +28,71 @@ class _LoginScreenState extends State<LoginScreen> {
     });
   }
 
-  // Lógica para login
+  // Función para hashear la contraseña (¡DEBE SER LA MISMA QUE EN EL REGISTRO!)
+  String _hashPassword(String password) {
+    final bytes = utf8.encode(password);
+    final digest = sha256.convert(bytes);
+    return digest.toString();
+  }
+
   Future<void> _login() async {
     if (_formKey.currentState!.validate()) {
       setState(() {
         _isLoading = true;
-        _errorMessage = ''; // Limpia el mensaje de error
+        _errorMessage = '';
       });
 
-      final email = _emailController.text;
-      final password = _passwordController.text;
+      final email = _emailController.text.trim();
+      final password = _passwordController.text.trim(); // ¡Recorta los espacios!
+      final hashedPassword = _hashPassword(password); // Hashea la contraseña
 
       try {
-        final prefs = await SharedPreferences.getInstance();
+        final QuerySnapshot<Map<String, dynamic>> userQuery = await _firestore
+            .collection('users')
+            .where('email', isEqualTo: email)
+            .limit(1)
+            .get();
 
-        // *** LÓGICA DE AUTENTICACIÓN CON SHARED_PREFERENCES ***
-        // 1. Recuperar el email y la contraseña guardados durante el registro.
-        final storedEmail = prefs.getString('userEmail');
-        final storedPassword = prefs.getString('userPassword'); // ¡NUNCA guardes contraseñas en texto plano!
-
-        // 2. Comparar las credenciales ingresadas con las guardadas.
-        if (storedEmail == email && storedPassword == password) {
-          // 3. Si las credenciales coinciden, marcar al usuario como logueado y navegar a la pantalla principal.
-          await prefs.setBool('isLoggedIn', true);
-          if (mounted) {
-            Navigator.pushReplacementNamed(context, '/home');
-          }
-        } else {
-          // 4. Si las credenciales no coinciden, mostrar un mensaje de error.
+        if (userQuery.docs.isEmpty) {
           setState(() {
             _isLoading = false;
-            _errorMessage = 'Correo o contraseña incorrectos';
+            _errorMessage = 'Usuario no encontrado. Por favor, regístrate.';
           });
+          return;
         }
-      } catch (error) {
-        // Capturar errores
+
+        final userData = userQuery.docs.first.data();
+        final storedHashedPassword = userData['password']; // Obtiene el hash almacenado
+
+        if (storedHashedPassword !=
+            hashedPassword) { // Compara los hashes
+          setState(() {
+            _isLoading = false;
+            _errorMessage = 'Contraseña incorrecta.';
+          });
+          return;
+        }
+
+        final prefs = await SharedPreferences.getInstance();
+        await prefs.setString('userEmail', email);
+        await prefs.setString('userName', userData['name']);
+        await prefs.setString('userId', userQuery.docs.first.id);
+        await prefs.setBool('isLoggedIn', true);
+
         setState(() {
           _isLoading = false;
-          _errorMessage = 'Error: ${error.toString()}';
+        });
+
+        if (mounted) {
+          Navigator.pushReplacementNamed(context, '/home');
+        }
+      } catch (error) {
+        setState(() {
+          _isLoading = false;
+          _errorMessage = 'Error al iniciar sesión: ${error.toString()}';
         });
       }
     }
-  }
-
-  void _navigateToRegister() {
-    Navigator.pushNamed(context, '/register');
   }
 
   @override
@@ -85,14 +107,11 @@ class _LoginScreenState extends State<LoginScreen> {
     return Scaffold(
       body: Stack(
         children: [
-          // Imagen de fondo
           Positioned.fill(
             child: Image.asset(
               'assets/images/logo-nuevo.png',
-              // Reemplaza con la ruta correcta
               fit: BoxFit.cover,
-              color: Colors.blue.withOpacity(0.4),
-              // Opcional: ajustar el color
+              color: Colors.purple.withOpacity(0.4),
               colorBlendMode: BlendMode.srcOver,
             ),
           ),
@@ -100,119 +119,94 @@ class _LoginScreenState extends State<LoginScreen> {
             child: SingleChildScrollView(
               padding: const EdgeInsets.all(30.0),
               child: Card(
-                elevation: 5,
+                elevation: 6,
                 shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(15.0),
+                  borderRadius: BorderRadius.circular(20.0),
                 ),
                 child: Padding(
                   padding: const EdgeInsets.all(25.0),
                   child: Form(
                     key: _formKey,
                     child: Column(
-                      mainAxisSize: MainAxisSize.min,
                       crossAxisAlignment: CrossAxisAlignment.stretch,
-                      children: <Widget>[
+                      children: [
                         const Text(
-                          'Bienvenido',
+                          'Iniciar sesión',
                           textAlign: TextAlign.center,
                           style: TextStyle(
-                            fontSize: 28.0,
+                            fontSize: 26.0,
                             fontWeight: FontWeight.bold,
-                            color: Colors.blue,
+                            color: Colors.deepPurple,
                           ),
-                        ),
-                        const SizedBox(height: 10.0),
-                        const Text(
-                          'Inicia sesión en tu cuenta para continuar',
-                          textAlign: TextAlign.center,
-                          style: TextStyle(color: Colors.grey),
                         ),
                         const SizedBox(height: 30.0),
                         TextFormField(
                           controller: _emailController,
                           keyboardType: TextInputType.emailAddress,
                           decoration: const InputDecoration(
-                            labelText: 'Email',
-                            prefixIcon: Icon(Icons.email_outlined),
+                            labelText: 'Correo electrónico',
+                            prefixIcon: Icon(Icons.email),
                             border: OutlineInputBorder(
                               borderRadius:
-                                  BorderRadius.all(Radius.circular(10.0)),
+                                  BorderRadius.all(Radius.circular(10)),
                             ),
                           ),
                           validator: InputValidators.isValidEmail,
                         ),
-                        const SizedBox(height: 20.0),
+                        const SizedBox(height: 20),
                         TextFormField(
                           controller: _passwordController,
                           obscureText: _obscurePassword,
                           decoration: InputDecoration(
                             labelText: 'Contraseña',
-                            prefixIcon: const Icon(Icons.lock_outline),
+                            prefixIcon: const Icon(Icons.lock),
                             suffixIcon: IconButton(
                               icon: Icon(_obscurePassword
-                                  ? Icons.visibility_off_outlined
-                                  : Icons.visibility_outlined),
+                                  ? Icons.visibility_off
+                                  : Icons.visibility),
                               onPressed: _togglePasswordVisibility,
                             ),
                             border: const OutlineInputBorder(
                               borderRadius:
-                                  BorderRadius.all(Radius.circular(10.0)),
+                                  BorderRadius.all(Radius.circular(10)),
                             ),
                           ),
-                          validator: InputValidators.isValidPassword,
+                          validator: InputValidators.isNotEmpty,
                         ),
-                        const SizedBox(height: 10.0),
-                        Align(
-                          alignment: Alignment.centerRight,
-                          child: TextButton(
-                            onPressed: () {
-                              // Implementar lógica de "Olvidé mi contraseña"
-                              ScaffoldMessenger.of(context).showSnackBar(
-                                const SnackBar(
-                                    content: Text(
-                                        '¿Olvidaste tu contraseña? (Implementar)')),
-                              );
-                            },
-                            child: const Text('¿Olvidaste tu contraseña?',
-                                style: TextStyle(color: Colors.blue)),
-                          ),
-                        ),
-                        const SizedBox(height: 25.0),
+                        const SizedBox(height: 30),
                         ElevatedButton(
                           onPressed: _isLoading ? null : _login,
-                          // Deshabilita si está cargando
                           style: ElevatedButton.styleFrom(
-                            padding:
-                                const EdgeInsets.symmetric(vertical: 15.0),
+                            padding: const EdgeInsets.symmetric(vertical: 15),
                             shape: RoundedRectangleBorder(
-                              borderRadius: BorderRadius.circular(10.0),
+                              borderRadius: BorderRadius.circular(12),
                             ),
+                            backgroundColor: Colors.deepPurple,
                           ),
                           child: _isLoading
                               ? const CircularProgressIndicator(
                                   color: Colors.white,
-                                ) // Muestra el indicador
-                              : const Text(
-                                  'Iniciar Sesión',
+                                )
+                              : const Text('Iniciar sesión',
                                   style: TextStyle(
-                                      fontSize: 18.0, color: Colors.white),
-                                ),
+                                      fontSize: 18,
+                                      color: Colors.white)),
                         ),
-                        const SizedBox(height: 20.0),
-                        Row(
-                          mainAxisAlignment: MainAxisAlignment.center,
-                          children: <Widget>[
-                            const Text('¿No tienes una cuenta?'),
-                            TextButton(
-                              onPressed: _navigateToRegister,
-                              child: const Text('Regístrate',
-                                  style: TextStyle(
-                                      fontWeight: FontWeight.bold,
-                                      color: Colors.blue)),
-                            ),
-                          ],
+                        const SizedBox(height: 15),
+                        TextButton(
+                          onPressed: () {
+                            Navigator.push(
+                              context,
+                              MaterialPageRoute(
+                                builder: (context) =>
+                                    const RegisterScreen(),
+                              ),
+                            );
+                          },
+                          child: const Text(
+                              '¿No tienes una cuenta? Regístrate aquí'),
                         ),
-                        if (_errorMessage.isNotEmpty) // Muestra el mensaje de error
+                        if (_errorMessage.isNotEmpty)
                           Padding(
                             padding: const EdgeInsets.only(top: 10.0),
                             child: Text(

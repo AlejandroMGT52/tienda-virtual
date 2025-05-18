@@ -1,7 +1,9 @@
 import 'package:flutter/material.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:tienda_virtual_flutter/utils/input_validators.dart';
-import 'package:tienda_virtual_flutter/screens/login_screen.dart'; // Importa LoginScreen
+import 'package:crypto/crypto.dart'; // Importa el paquete crypto
+import 'dart:convert'; // Para la función utf8.encode
 
 class RegisterScreen extends StatefulWidget {
   const RegisterScreen({super.key});
@@ -18,10 +20,9 @@ class _RegisterScreenState extends State<RegisterScreen> {
   final _confirmPasswordController = TextEditingController();
   bool _obscurePassword = true;
   bool _obscureConfirmPassword = true;
-  bool _isLoading =
-      false; // Para mostrar un indicador de carga durante el registro
-  String _errorMessage =
-      ''; // Para mostrar mensajes de error al usuario
+  bool _isLoading = false;
+  String _errorMessage = '';
+  final FirebaseFirestore _firestore = FirebaseFirestore.instance;
 
   void _togglePasswordVisibility(bool confirm) {
     setState(() {
@@ -33,55 +34,79 @@ class _RegisterScreenState extends State<RegisterScreen> {
     });
   }
 
-  // Función para registrar al usuario
+  // Función para hashear la contraseña usando SHA256
+  String _hashPassword(String password) {
+    final bytes = utf8.encode(password);
+    final digest = sha256.convert(bytes);
+    return digest.toString();
+  }
+
+  // Función para registrar al usuario (modificada para usar Firestore)
   Future<void> _register() async {
     if (_formKey.currentState!.validate()) {
       setState(() {
         _isLoading = true;
-        _errorMessage = ''; // Limpia el mensaje de error
+        _errorMessage = '';
       });
 
-      final name = _nameController.text;
-      final email = _emailController.text;
+      final name = _nameController.text.trim();
+      final email = _emailController.text.trim();
       final password = _passwordController.text;
+      final hashedPassword = _hashPassword(password); // Hashea la contraseña
+      final registrationDate = DateTime.now();
 
-      // Simula una llamada a un servicio de registro (REEMPLAZA CON TU LÓGICA REAL)
       try {
-        // Simula una espera de 2 segundos
-        await Future.delayed(const Duration(seconds: 2));
+        // Verificar si el correo ya existe en Firestore
+        final QuerySnapshot<Map<String, dynamic>> userExists = await _firestore
+            .collection('users')
+            .where('email', isEqualTo: email)
+            .get();
 
-        // *** AQUÍ DEBES INTEGRAR TU LÓGICA DE REGISTRO REAL ***
-        // 1. Enviar 'name', 'email' y 'password' a tu servidor de registro.
-        // 2. Recibir una respuesta (éxito o fallo).
-        // 3. Si es exitoso:
-        //    - Guardar la información del usuario en SharedPreferences.
-        //    - Navegar a la pantalla de inicio de sesión.
-        // 4. Si falla:
-        //    - Mostrar un mensaje de error.
+        if (userExists.docs.isNotEmpty) {
+          setState(() {
+            _isLoading = false;
+            _errorMessage = 'Este correo electrónico ya está registrado.';
+          });
+          return;
+        }
 
-        // Simulación de éxito (para pruebas)
+        // Agrega el nuevo usuario a Firestore
+        final DocumentReference<Map<String, dynamic>> newUser =
+            await _firestore.collection('users').add({
+          'name': name,
+          'email': email,
+          'password': hashedPassword, // Guarda el hash, no la contraseña en texto plano
+          'registrationDate': registrationDate,
+        });
+
+        // Guardar en SharedPreferences
         final prefs = await SharedPreferences.getInstance();
         await prefs.setString('userName', name);
         await prefs.setString('userEmail', email);
-        await prefs.setString('userPassword', password); // NO GUARDAR CONTRASEÑAS EN TEXTO PLANO EN LA VIDA REAL
-        await prefs.setBool('isLoggedIn',
-            true); //Para que al registrarse inicie sesión de una vez.
+        await prefs.setString('userId', newUser.id); // Guarda el ID del documento
+        await prefs.setBool('isLoggedIn', true);
+
+        setState(() {
+          _isLoading = false;
+        });
 
         if (mounted) {
           // Muestra un mensaje de éxito y navega al Login
           ScaffoldMessenger.of(context).showSnackBar(
             const SnackBar(
-              content: Text('Registro exitoso. Por favor, inicia sesión.'),
+              content:
+                  Text('Registro exitoso. Por favor, inicia sesión.'),
               duration: Duration(seconds: 3),
             ),
           );
-          Navigator.pushReplacementNamed(context, '/login'); // O usa pushReplacement
+          Navigator.pushReplacementNamed(
+              context, '/login'); // O usa pushReplacement
         }
       } catch (error) {
         // Capturar errores
         setState(() {
           _isLoading = false;
-          _errorMessage = 'Error: ${error.toString()}';
+          _errorMessage = 'Error al registrar: ${error.toString()}';
         });
       }
     }
@@ -172,7 +197,8 @@ class _RegisterScreenState extends State<RegisterScreen> {
                               icon: Icon(_obscurePassword
                                   ? Icons.visibility_off
                                   : Icons.visibility),
-                              onPressed: () => _togglePasswordVisibility(false),
+                              onPressed: () =>
+                                  _togglePasswordVisibility(false),
                             ),
                             border: const OutlineInputBorder(
                               borderRadius:
@@ -187,12 +213,14 @@ class _RegisterScreenState extends State<RegisterScreen> {
                           obscureText: _obscureConfirmPassword,
                           decoration: InputDecoration(
                             labelText: 'Confirmar contraseña',
-                            prefixIcon: const Icon(Icons.lock_outline),
+                            prefixIcon:
+                                const Icon(Icons.lock_outline),
                             suffixIcon: IconButton(
                               icon: Icon(_obscureConfirmPassword
                                   ? Icons.visibility_off
                                   : Icons.visibility),
-                              onPressed: () => _togglePasswordVisibility(true),
+                              onPressed: () =>
+                                  _togglePasswordVisibility(true),
                             ),
                             border: const OutlineInputBorder(
                               borderRadius:
@@ -203,7 +231,8 @@ class _RegisterScreenState extends State<RegisterScreen> {
                             if (value == null || value.isEmpty) {
                               return 'Campo obligatorio';
                             }
-                            if (value != _passwordController.text) {
+                            if (value !=
+                                _passwordController.text) {
                               return 'Las contraseñas no coinciden';
                             }
                             return null;
@@ -213,7 +242,8 @@ class _RegisterScreenState extends State<RegisterScreen> {
                         ElevatedButton(
                           onPressed: _isLoading ? null : _register,
                           style: ElevatedButton.styleFrom(
-                            padding: const EdgeInsets.symmetric(vertical: 15),
+                            padding: const EdgeInsets.symmetric(
+                                vertical: 15),
                             shape: RoundedRectangleBorder(
                               borderRadius: BorderRadius.circular(12),
                             ),
@@ -222,17 +252,19 @@ class _RegisterScreenState extends State<RegisterScreen> {
                           child: _isLoading
                               ? const CircularProgressIndicator(
                                   color: Colors.white,
-                                ) // Muestra el indicador
+                                )
                               : const Text('Registrarse',
                                   style: TextStyle(
-                                      fontSize: 18, color: Colors.white)),
+                                      fontSize: 18,
+                                      color: Colors.white)),
                         ),
                         const SizedBox(height: 15),
                         TextButton(
                           onPressed: () => Navigator.pop(context),
-                          child: const Text('¿Ya tienes una cuenta? Inicia sesión'),
+                          child: const Text(
+                              '¿Ya tienes una cuenta? Inicia sesión'),
                         ),
-                         if (_errorMessage.isNotEmpty) // Muestra el mensaje de error
+                        if (_errorMessage.isNotEmpty)
                           Padding(
                             padding: const EdgeInsets.only(top: 10.0),
                             child: Text(
@@ -255,3 +287,4 @@ class _RegisterScreenState extends State<RegisterScreen> {
     );
   }
 }
+

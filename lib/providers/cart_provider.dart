@@ -20,47 +20,39 @@ class CartProvider extends ChangeNotifier {
     final prefs = await SharedPreferences.getInstance();
     final cartJson = prefs.getString('cart');
     if (cartJson != null) {
-      final cartData = jsonDecode(cartJson) as List;
-      _cartItems.clear();
-      _cartItems.addAll(cartData.map((item) {
-        final productMap = item['product'] as Map<String, dynamic>;
-        return CartItem(
-          product: Product(
-            id: productMap['id'] as int,
-            title: productMap['title'] as String,
-            price: productMap['price'] as double,
-            description: productMap['description'] as String,
-            category: productMap['category'] as String,
-            image: productMap['image'] as String,
-          ),
-          quantity: item['quantity'] as int,
-        );
-      }));
-      notifyListeners();
+      try {
+        final cartData = jsonDecode(cartJson) as List;
+        _cartItems.clear();
+        _cartItems.addAll(cartData.map((item) {
+          final productMap = item['product'] as Map<String, dynamic>;
+          // Asegúrate de pasar el ID del producto al constructor de Product
+          return CartItem(
+            product: Product.fromMap(productMap, productMap['id'] ?? ''), // Pass the id
+            quantity: item['quantity'] as int,
+          );
+        }));
+        notifyListeners();
+      } catch (e) {
+        // Manejar error de deserialización.  Esto es CRUCIAL.
+        print('Error decoding cart JSON: $e');
+        _cartItems.clear(); // Clear the cart to avoid corrupted state.
+        notifyListeners();
+        await prefs.remove('cart'); //remove the invalid cart
+      }
     }
   }
 
   // Guarda el carrito en SharedPreferences
   Future<void> _saveCartToPrefs() async {
     final prefs = await SharedPreferences.getInstance();
-    final cartJson = jsonEncode(_cartItems.map((item) {
-      return {
-        'product': {
-          'id': item.product.id,
-          'title': item.product.title,
-          'price': item.product.price,
-          'description': item.product.description,
-          'category': item.product.category,
-          'image': item.product.image,
-        },
-        'quantity': item.quantity,
-      };
-    }).toList());
+    // Usa el método toJson() de CartItem y toMap() de Product
+    final cartJson = jsonEncode(_cartItems.map((item) => item.toJson()).toList());
     await prefs.setString('cart', cartJson);
   }
 
   void addToCart(Product product) {
-    final existingItem = _cartItems.firstWhereOrNull((item) => item.product.id == product.id);
+    final existingItem =
+        _cartItems.firstWhereOrNull((item) => item.product.id == product.id);
     if (existingItem != null) {
       existingItem.quantity++;
     } else {
@@ -71,7 +63,8 @@ class CartProvider extends ChangeNotifier {
   }
 
   void removeFromCart(Product product) {
-    final existingItem = _cartItems.firstWhereOrNull((item) => item.product.id == product.id);
+    final existingItem =
+        _cartItems.firstWhereOrNull((item) => item.product.id == product.id);
     if (existingItem != null) {
       if (existingItem.quantity > 1) {
         existingItem.quantity--;
@@ -96,6 +89,7 @@ class CartProvider extends ChangeNotifier {
   }
 
   double getCartTotal() {
-    return _cartItems.fold(0, (total, item) => total + (item.product.price * item.quantity));
+    return _cartItems.fold(
+        0, (total, item) => total + (item.product.price * item.quantity));
   }
 }
